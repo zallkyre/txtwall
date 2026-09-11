@@ -132,11 +132,16 @@ async function post() {
   postbtn.disabled = true;
   try {
     const { ct, iv } = await encrypt(text);
-    await fetch('/api/post', {
+    const res = await fetch('/api/post', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ct, iv })
     });
+    if (!res.ok) {
+      // rate limited or rejected - keep the text so nothing is lost
+      postbtn.disabled = false;
+      return;
+    }
     input.value = '';
     postbtn.disabled = true;
     await refresh();
