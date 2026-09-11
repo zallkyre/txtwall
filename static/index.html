@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>txtwall</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d0d0f;
+    color: #e8e8ea;
+    font-family: ui-monospace, 'Cascadia Code', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  header { padding: 40px 20px 20px; text-align: center; }
+  h1 { font-size: 2rem; letter-spacing: -0.02em; }
+  header p { color: #8a8a93; font-size: 0.8rem; margin-top: 6px; }
+  main {
+    width: 100%;
+    max-width: 560px;
+    padding: 0 16px 60px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .composer {
+    background: #16161a;
+    border: 1px solid #26262c;
+    border-radius: 10px;
+    padding: 10px;
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+  }
+  textarea {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #e8e8ea;
+    font-family: inherit;
+    font-size: 0.95rem;
+    resize: none;
+    min-height: 44px;
+    max-height: 120px;
+  }
+  textarea::placeholder { color: #8a8a93; }
+  button {
+    background: #e8e8ea;
+    color: #0d0d0f;
+    border: none;
+    font-family: inherit;
+    font-weight: 600;
+    font-size: 0.85rem;
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  button:hover { opacity: 0.8; }
+  button:disabled { opacity: 0.3; cursor: default; }
+  .wall { display: flex; flex-direction: column; gap: 8px; }
+  .msg {
+    background: #16161a;
+    border: 1px solid #26262c;
+    border-radius: 10px;
+    padding: 10px 12px;
+    animation: fade 0.25s ease;
+  }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  .msg .text { font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+  .msg .meta { margin-top: 6px; font-size: 0.7rem; color: #8a8a93; display: flex; justify-content: space-between; }
+  .empty { text-align: center; color: #8a8a93; padding: 40px 0; font-size: 0.85rem; }
+  footer { color: #8a8a93; font-size: 0.7rem; padding: 16px; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>txtwall</h1>
+  <p>encrypted. anonymous. no accounts.</p>
+</header>
+<main>
+  <div class="composer">
+    <textarea id="input" placeholder="say something..." maxlength="500"></textarea>
+    <button id="postbtn" disabled>post</button>
+  </div>
+  <div class="wall" id="wall"></div>
+</main>
+<footer>messages are encrypted in your browser. the server only stores ciphertext. messages auto-delete after 24h.</footer>
+
+<script>
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+
+// one shared key for the whole wall — everyone reads and writes the same messages
+const KEY_STRING = 'txtwall-shared-key-v1';
+
+async function getKey() {
+  const digest = await crypto.subtle.digest('SHA-256', enc.encode(KEY_STRING));
+  return crypto.subtle.importKey('raw', digest, 'AES-GCM', false, ['encrypt', 'decrypt']);
+}
+
+const b64 = (u8) => btoa(String.fromCharCode(...u8));
+const unb64 = (s) => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+
+async function encrypt(text) {
+  const key = await getKey();
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(text));
+  return { ct: b64(new Uint8Array(ct)), iv: b64(iv) };
+}
+
+async function decrypt(ctB64, ivB64) {
+  const key = await getKey();
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(ivB64) }, key, unb64(ctB64));
+  return dec.decode(pt);
+}
+
+const input = document.getElementById('input');
+const postbtn = document.getElementById('postbtn');
+const wall = document.getElementById('wall');
+
+input.addEventListener('input', () => {
+  postbtn.disabled = input.value.trim().length === 0;
+});
+
+async function post() {
+  const text = input.value.trim();
+  if (!text) return;
+  postbtn.disabled = true;
+  try {
+    const { ct, iv } = await encrypt(text);
+    await fetch('/api/post', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ct, iv })
+    });
+    input.value = '';
+    postbtn.disabled = true;
+    await refresh();
+  } catch (e) {
+    console.error(e);
+    postbtn.disabled = false;
+  }
+}
+
+postbtn.addEventListener('click', post);
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); post(); }
+});
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+async function refresh() {
+  try {
+    const res = await fetch('/api/messages');
+    const msgs = await res.json();
+    const all = [];
+    for (const m of msgs) {
+      let text = '';
+      try { text = await decrypt(m.ct, m.iv); } catch (e) { continue; }
+      const t = new Date(m.created_at * 1000);
+      const time = t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      all.push({ id: m.id, text, time });
+    }
+    if (!all.length) {
+      wall.innerHTML = '<div class="empty">nothing here yet. post the first message.</div>';
+      return;
+    }
+    wall.innerHTML = all.map(m =>
+      `<div class="msg"><div class="text">${escapeHtml(m.text)}</div><div class="meta"><span>#${m.id}</span><span>${m.time}</span></div></div>`
+    ).join('');
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>
