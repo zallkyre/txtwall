@@ -74,6 +74,70 @@
   .msg .meta { margin-top: 6px; font-size: 0.7rem; color: #8a8a93; display: flex; justify-content: space-between; }
   .empty { text-align: center; color: #8a8a93; padding: 40px 0; font-size: 0.85rem; }
   footer { color: #8a8a93; font-size: 0.7rem; padding: 16px; text-align: center; }
+
+  /* discord widget - small, collapsible */
+  .discord-fab {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    background: #16161a;
+    border: 1px solid #26262c;
+    color: #e8e8ea;
+    font-family: inherit;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 8px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+    z-index: 50;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  .discord-fab:hover { border-color: #5865f2; background: #1c1c21; }
+  .discord-fab svg { width: 16px; height: 16px; display: block; }
+  .discord-pop {
+    position: fixed;
+    right: 16px;
+    bottom: 62px;
+    width: 280px;
+    background: #16161a;
+    border: 1px solid #26262c;
+    border-radius: 10px;
+    overflow: hidden;
+    z-index: 50;
+    display: none;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  }
+  .discord-pop.open { display: block; animation: popup 0.18s ease; }
+  @keyframes popup { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  .discord-pop-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    border-bottom: 1px solid #26262c;
+    font-size: 0.72rem;
+    color: #8a8a93;
+  }
+  .discord-pop-head button {
+    background: none;
+    border: none;
+    color: #8a8a93;
+    font-size: 0.9rem;
+    padding: 0 4px;
+    cursor: pointer;
+  }
+  .discord-pop-head button:hover { color: #e8e8ea; opacity: 1; }
+  .discord-pop iframe {
+    width: 350px;
+    height: 500px;
+    border: 0;
+    transform: scale(0.8);
+    transform-origin: top left;
+    display: block;
+  }
 </style>
 </head>
 <body>
@@ -89,6 +153,18 @@
   <div class="wall" id="wall"></div>
 </main>
 <footer>messages are encrypted in your browser. the server only stores ciphertext. messages auto-delete after 24h.</footer>
+
+<button class="discord-fab" id="discordFab" aria-label="open discord">
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.317 4.369a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>
+  <span>discord</span>
+</button>
+<div class="discord-pop" id="discordPop">
+  <div class="discord-pop-head">
+    <span>volos discord</span>
+    <button id="discordClose" aria-label="close">×</button>
+  </div>
+  <iframe src="https://discord.com/widget?id=1548444097033928786&theme=dark" width="350" height="500" allowtransparency="true" frameborder="0" sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"></iframe>
+</div>
 
 <script>
 const enc = new TextEncoder();
@@ -186,6 +262,13 @@ async function refresh() {
 
 refresh();
 setInterval(refresh, 5000);
+
+// discord widget toggle
+const discordFab = document.getElementById('discordFab');
+const discordPop = document.getElementById('discordPop');
+const discordClose = document.getElementById('discordClose');
+discordFab.addEventListener('click', () => discordPop.classList.toggle('open'));
+discordClose.addEventListener('click', () => discordPop.classList.remove('open'));
 </script>
 </body>
 </html>

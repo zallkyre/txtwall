@@ -59,6 +59,10 @@ class Post(BaseModel):
 def messages():
     # reads stay free - no rate limit, no auth
     conn = db()
+    # purge expired messages on every read too, so stale posts
+    # auto-delete even when nobody posts
+    conn.execute("DELETE FROM messages WHERE created_at < ?", (int(time.time()) - TTL_SECONDS,))
+    conn.commit()
     rows = conn.execute(
         "SELECT id, ct, iv, created_at FROM messages ORDER BY id DESC LIMIT 200"
     ).fetchall()
