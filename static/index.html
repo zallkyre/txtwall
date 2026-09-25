@@ -139,8 +139,51 @@
   .msg .text { font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
   .msg img { max-width: 100%; border-radius: 8px; display: block; margin-top: 6px; }
   .msg .meta { margin-top: 6px; font-size: 0.7rem; color: #8a8a93; display: flex; justify-content: space-between; }
+  .msg .reacts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+  .react {
+    background: #0d0d0f;
+    border: 1px solid #26262c;
+    border-radius: 999px;
+    color: #e8e8ea;
+    font-family: inherit;
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+  }
+  .react:hover { border-color: #5865f2; }
+  .react .n { color: #8a8a93; margin-left: 3px; }
+  .react-add { background: transparent; border: 1px dashed #26262c; color: #8a8a93; }
+  .react-add:hover { border-color: #5865f2; color: #e8e8ea; }
   .empty { text-align: center; color: #8a8a93; padding: 40px 0; font-size: 0.85rem; }
   footer { color: #8a8a93; font-size: 0.7rem; padding: 16px; text-align: center; max-width: 560px; }
+
+  /* top bar: viewers + surprise */
+  .topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #8a8a93;
+  }
+  .viewers { display: flex; align-items: center; gap: 6px; }
+  .viewers .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #30d158; display: inline-block;
+    animation: blink 2s infinite;
+  }
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .surprise {
+    background: transparent;
+    border: 1px solid #26262c;
+    color: #8a8a93;
+    font-family: inherit;
+    font-size: 0.72rem;
+    padding: 4px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .surprise:hover { border-color: #5865f2; color: #e8e8ea; }
 
   /* upgrade banner */
   .upgrade {
@@ -264,6 +307,11 @@
     </div>
     <div class="info" id="authInfo" style="display:none"></div>
     <div class="err" id="authErr" style="display:none"></div>
+  </div>
+
+  <div class="topbar">
+    <span class="viewers"><span class="dot"></span><span id="viewerCount">0</span> people here now</span>
+    <button class="surprise" id="surpriseBtn">surprise me</button>
   </div>
 
   <!-- upgrade banner: shown when anon quota is hit -->
@@ -436,28 +484,80 @@ function escapeHtml(s) {
 async function refresh() {
   try {
     const res = await fetch('/api/messages');
-    const msgs = await res.json();
+    const data = await res.json();
+    const viewers = data.length && data[data.length - 1].viewers !== undefined
+      ? data.pop().viewers : 0;
+    document.getElementById('viewerCount').textContent = viewers;
     const all = [];
-    for (const m of msgs) {
+    for (const m of data) {
       let text = '';
       if (m.ct) {
         try { text = await decrypt(m.ct, m.iv); } catch (e) { continue; }
       }
       const t = new Date(m.created_at * 1000);
       const time = t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      all.push({ id: m.id, text, time, image: m.image });
+      all.push({ id: m.id, text, time, image: m.image, reactions: m.reactions || {} });
     }
     if (!all.length) {
       wall.innerHTML = '<div class="empty">nothing here yet. post the first message.</div>';
       return;
     }
-    wall.innerHTML = all.map(m =>
-      `<div class="msg">${m.text ? `<div class="text">${escapeHtml(m.text)}</div>` : ''}${m.image ? `<img src="/uploads/${m.image}" loading="lazy" alt="image">` : ''}<div class="meta"><span>#${m.id}</span><span>${m.time}</span></div></div>`
-    ).join('');
+    wall.innerHTML = all.map(m => {
+      const reacts = Object.entries(m.reactions).map(([e, n]) =>
+        `<button class="react" data-id="${m.id}" data-emoji="${e}">${e}<span class="n">${n}</span></button>`
+      ).join('');
+      return `<div class="msg">${m.text ? `<div class="text">${escapeHtml(m.text)}</div>` : ''}${m.image ? `<img src="/uploads/${m.image}" loading="lazy" alt="image">` : ''}<div class="meta"><span>#${m.id}</span><span>${m.time}</span></div>${reacts ? `<div class="reacts">${reacts}<button class="react react-add" data-id="${m.id}">+</button></div>` : ''}</div>`;
+    }).join('');
+    // react buttons
+    wall.querySelectorAll('.react').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = parseInt(btn.dataset.id, 10);
+        const emoji = btn.dataset.emoji;
+        if (emoji) {
+          await fetch('/api/react', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message_id: id, emoji })
+          });
+        } else {
+          const pick = prompt('emoji to add:');
+          if (pick && pick.trim()) {
+            await fetch('/api/react', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message_id: id, emoji: pick.trim() })
+            });
+          }
+        }
+        refresh();
+      });
+    });
   } catch (e) {
     console.error(e);
   }
 }
+
+// surprise me: fetch a random message and scroll to it
+document.getElementById('surpriseBtn').addEventListener('click', async () => {
+  try {
+    const res = await fetch('/api/messages/random');
+    const m = await res.json();
+    if (!m.found) { alert('nothing to surprise you with yet'); return; }
+    let text = '';
+    if (m.ct) {
+      try { text = await decrypt(m.ct, m.iv); } catch (e) { text = '(undecryptable)'; }
+    }
+    const t = new Date(m.created_at * 1000);
+    const time = t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const el = document.createElement('div');
+    el.className = 'msg';
+    el.style.borderColor = '#5865f2';
+    el.innerHTML = `${text ? `<div class="text">${escapeHtml(text)}</div>` : ''}${m.image ? `<img src="/uploads/${m.image}" loading="lazy" alt="image">` : ''}<div class="meta"><span>#${m.id} (random)</span><span>${time}</span></div>`;
+    wall.prepend(el);
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => el.style.borderColor = '', 4000);
+  } catch (e) { console.error(e); }
+});
 
 refresh();
 setInterval(refresh, 5000);

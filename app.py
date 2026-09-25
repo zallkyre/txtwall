@@ -3,6 +3,7 @@ import io
 import os
 import re
 import secrets
+import shutil
 import sqlite3
 import time
 from collections import defaultdict
@@ -46,6 +47,21 @@ CONFIG = {
     "max_image_bytes": 5 * 1024 * 1024,  # max upload size (5MB)
     "image_max_dim": 1080,               # images scaled to fit this box (1080x1080)
     "uploads_dir": "uploads",            # where images are stored
+
+    # --- storage-aware cap shrinking ---
+    # as the disk fills, daily caps shrink. gentle curve:
+    #   < 50% used  -> full caps
+    #   50-70%      -> 80% of caps
+    #   70-85%      -> 60% of caps
+    #   85-95%      -> 40% of caps
+    #   > 95%       -> 20% of caps (never 0, never blocks posting entirely)
+    "cap_shrink": [
+        (0.50, 1.00),
+        (0.70, 0.80),
+        (0.85, 0.60),
+        (0.95, 0.40),
+        (1.01, 0.20),
+    ],
 }
 
 DB = Path("txtwall.db")
@@ -102,13 +118,23 @@ def db():
             salt TEXT NOT NULL,
             account_number TEXT UNIQUE NOT NULL,
             permanent INTEGER NOT NULL DEFAULT 0,
-            created_at INTEGER NOT NULL
+            created_at INTEGER NOT NULL,
+            last_active INTEGER NOT NULL DEFAULT 0
         )"""
     )
     conn.execute(
         """CREATE TABLE IF NOT EXISTS sessions (
             token TEXT PRIMARY KEY,
             user_id INTEGER NOT NULL,
+            created_at INTEGER NOT NULL
+        )"""
+    )
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS reactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id INTEGER NOT NULL,
+            emoji TEXT NOT NULL,
+            ip TEXT,
             created_at INTEGER NOT NULL
         )"""
     )
@@ -121,6 +147,9 @@ def db():
     ]:
         if col not in cols:
             conn.execute(ddl)
+    ucols = {r[1] for r in conn.execute("PRAGMA table_info(users)")}
+    if "last_active" not in ucols:
+        conn.execute("ALTER TABLE users ADD COLUMN last_active INTEGER NOT NULL DEFAULT 0")
     conn.commit()
     return conn
 
@@ -173,6 +202,50 @@ def _day_start() -> int:
     return int(time.time()) - (int(time.time()) % 86400)
 
 
+_last_vacuum = 0
+
+
+def _purge(conn) -> None:
+    """Pure-delete everything past TTL: messages, image files, stale
+    sessions. Accounts are kept forever. Then VACUUM (throttled) so the
+    DB file actually shrinks — no trace, no space taken."""
+    global _last_vacuum
+    cutoff = int(time.time()) - CONFIG["ttl_seconds"]
+
+    # expired image files
+    expired = conn.execute(
+        "SELECT image FROM messages WHERE created_at < ? AND image IS NOT NULL",
+        (cutoff,),
+    ).fetchall()
+    for (img,) in expired:
+        try:
+            (UPLOADS / img).unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    # expired messages
+    conn.execute("DELETE FROM messages WHERE created_at < ?", (cutoff,))
+
+    # reactions on dead messages
+    conn.execute(
+        "DELETE FROM reactions WHERE message_id NOT IN (SELECT id FROM messages)"
+    )
+
+    # expired sessions (logged out or stale)
+    conn.execute("DELETE FROM sessions WHERE created_at < ?", (cutoff,))
+
+    conn.commit()
+
+    # shrink the file, but not on every request — once per hour max
+    now = time.time()
+    if now - _last_vacuum > 3600:
+        try:
+            conn.execute("VACUUM")
+            _last_vacuum = now
+        except Exception:
+            pass
+
+
 def _quota_used(conn, user_id, ip, kind: str) -> int:
     day = _day_start()
     # kind: "ct" = text message (non-empty ciphertext), "image" = has an image
@@ -190,8 +263,29 @@ def _quota_used(conn, user_id, ip, kind: str) -> int:
 
 def _quota_limits(user_id):
     if user_id:
-        return CONFIG["user_msg_daily"], CONFIG["user_img_daily"]
-    return CONFIG["anon_msg_daily"], CONFIG["anon_img_daily"]
+        msg, img = CONFIG["user_msg_daily"], CONFIG["user_img_daily"]
+    else:
+        msg, img = CONFIG["anon_msg_daily"], CONFIG["anon_img_daily"]
+    factor = _storage_factor()
+    return max(1, int(msg * factor)), max(1, int(img * factor))
+
+
+def _storage_factor() -> float:
+    """How much of the daily caps to allow, based on disk usage.
+    Returns 1.0 (full caps) when storage is fine, shrinking gently as
+    the disk fills. Never returns less than the smallest cap_shrink
+    factor, so posting always stays possible."""
+    try:
+        total, _, free = shutil.disk_usage(UPLOADS)
+        used = 1.0 - (free / total) if total else 0.0
+    except Exception:
+        return 1.0
+    factor = 1.0
+    for threshold, f in CONFIG["cap_shrink"]:
+        if used < threshold:
+            return factor
+        factor = f
+    return factor
 
 
 # ============================================================
@@ -257,33 +351,97 @@ class Permanent(BaseModel):
     permanent: bool
 
 
+# --- anonymous presence: IPs seen in the last 2 minutes ---
+_viewers = defaultdict(float)
+
+
+def _mark_viewer(ip: str):
+    _viewers[ip] = time.time()
+    if len(_viewers) > 5000:
+        for k in [k for k, t in _viewers.items() if time.time() - t > 120]:
+            del _viewers[k]
+
+
+def _viewer_count() -> int:
+    now = time.time()
+    return sum(1 for t in _viewers.values() if now - t < 120)
+
+
 @app.get("/api/messages")
-def messages():
+def messages(request: Request):
     # reads stay free - no rate limit, no auth
+    ip = request.client.host if request.client else "unknown"
+    _mark_viewer(ip)
     conn = db()
     # purge expired messages on every read too, so stale posts
     # auto-delete even when nobody posts
-    cutoff = int(time.time()) - CONFIG["ttl_seconds"]
-    expired = conn.execute(
-        "SELECT image FROM messages WHERE created_at < ? AND image IS NOT NULL",
-        (cutoff,),
-    ).fetchall()
-    conn.execute("DELETE FROM messages WHERE created_at < ?", (cutoff,))
-    conn.commit()
-    # delete orphaned image files
-    for (img,) in expired:
-        try:
-            (UPLOADS / img).unlink(missing_ok=True)
-        except Exception:
-            pass
+    _purge(conn)
     rows = conn.execute(
         "SELECT id, ct, iv, image, created_at FROM messages ORDER BY id DESC LIMIT 200"
     ).fetchall()
+    # reactions grouped per message
+    reacts = conn.execute(
+        "SELECT message_id, emoji, COUNT(*) FROM reactions GROUP BY message_id, emoji"
+    ).fetchall()
     conn.close()
+    by_msg = defaultdict(dict)
+    for mid, emoji, n in reacts:
+        by_msg[mid][emoji] = n
     return [
-        {"id": r[0], "ct": r[1], "iv": r[2], "image": r[3], "created_at": r[4]}
+        {
+            "id": r[0],
+            "ct": r[1],
+            "iv": r[2],
+            "image": r[3],
+            "created_at": r[4],
+            "reactions": by_msg.get(r[0], {}),
+        }
         for r in rows
-    ]
+    ] + [{"viewers": _viewer_count()}]
+
+
+@app.get("/api/messages/random")
+def random_message():
+    conn = db()
+    _purge(conn)
+    row = conn.execute(
+        "SELECT id, ct, iv, image, created_at FROM messages ORDER BY RANDOM() LIMIT 1"
+    ).fetchone()
+    conn.close()
+    if not row:
+        return {"found": False}
+    return {
+        "found": True,
+        "id": row[0],
+        "ct": row[1],
+        "iv": row[2],
+        "image": row[3],
+        "created_at": row[4],
+    }
+
+
+class React(BaseModel):
+    message_id: int
+    emoji: str = Field(min_length=1, max_length=8)
+
+
+@app.post("/api/react")
+def react(body: React, request: Request):
+    ip = request.client.host if request.client else "unknown"
+    if _rate_limited(ip):
+        return JSONResponse({"ok": False, "error": "slow down"}, status_code=429)
+    conn = db()
+    exists = conn.execute("SELECT 1 FROM messages WHERE id = ?", (body.message_id,)).fetchone()
+    if not exists:
+        conn.close()
+        return JSONResponse({"ok": False, "error": "message gone"}, status_code=404)
+    conn.execute(
+        "INSERT INTO reactions (message_id, emoji, ip, created_at) VALUES (?, ?, ?, ?)",
+        (body.message_id, body.emoji, ip, int(time.time())),
+    )
+    conn.commit()
+    conn.close()
+    return {"ok": True}
 
 
 @app.post("/api/post")
@@ -295,6 +453,7 @@ def post(p: Post, request: Request):
     user = _user_from_request(request)
     user_id = user["id"] if user else None
     conn = db()
+    _purge(conn)
     msg_used = _quota_used(conn, user_id, ip, "ct")
     msg_max, _ = _quota_limits(user_id)
     if msg_used >= msg_max:
@@ -304,7 +463,6 @@ def post(p: Post, request: Request):
             status_code=429,
         )
 
-    conn.execute("DELETE FROM messages WHERE created_at < ?", (int(time.time()) - CONFIG["ttl_seconds"],))
     # hard cap: keep only the newest MAX_ROWS
     conn.execute(
         "DELETE FROM messages WHERE id NOT IN (SELECT id FROM messages ORDER BY id DESC LIMIT ?)",
@@ -314,6 +472,8 @@ def post(p: Post, request: Request):
         "INSERT INTO messages (ct, iv, image, user_id, ip, created_at) VALUES (?, ?, NULL, ?, ?, ?)",
         (p.ct, p.iv, user_id, ip, int(time.time())),
     )
+    if user_id:
+        conn.execute("UPDATE users SET last_active = ? WHERE id = ?", (int(time.time()), user_id))
     conn.commit()
     conn.close()
     return {"ok": True}
