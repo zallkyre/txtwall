@@ -4,7 +4,7 @@ One shared grid, no expiry, and a hard daily allowance that the client
 cannot get around. Every limit below is checked on the server, inside the
 request, before anything is written:
 
-* **cooldown** — seconds since this identity's last pixel
+* **cooldown** — seconds since this identity's last pixel (0 = no cooldown)
 * **daily allowance** — ``base + credits``, counted in a database row
   keyed by (UTC day, identity), so reloading the page changes nothing
 * **rate limit** — a blunt per-IP brake on request volume

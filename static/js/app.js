@@ -41,8 +41,10 @@
       }
       const hint = document.getElementById('limitsHint');
       if (hint) {
-        hint.textContent = config.limits.anon + ' a day anonymous · ' +
-          config.limits.user + ' a day with an account · ' + (config.cooldown || 0) + 's apart';
+        let msg = config.limits.anon + ' a day anonymous · ' +
+          config.limits.user + ' a day with an account';
+        if (config.cooldown > 0) msg += ' · ' + config.cooldown + 's apart';
+        hint.textContent = msg;
       }
     }
 

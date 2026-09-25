@@ -43,7 +43,7 @@ SCHEMA = (
         used INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (day, ident)
     )""",
-    # --- last placement, for the cooldown ------------------------------
+    # --- last placement, for the cooldown (inert while pixel_cooldown=0) --
     """CREATE TABLE IF NOT EXISTS pixel_cooldown (
         ident TEXT PRIMARY KEY,
         last_at INTEGER NOT NULL

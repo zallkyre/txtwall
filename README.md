@@ -24,7 +24,7 @@ scroll and nothing to write — one pixel, one go.
 - **10 pixels a day** anonymously, **100 a day** with an account
 - **Nothing ever expires.** Pixels stay until the owner wipes the canvas
 - **16 fixed colours.** A palette keeps it legible; free colour turns art to mud
-- **30 second cooldown** between pixels, so nobody dumps a quota in two minutes
+- **No cooldown** — paint as fast as you like, the daily cap is the only limit
 - Buying or earning pixels adds to today's allowance on top
 
 ## 🔒 How the limits actually hold

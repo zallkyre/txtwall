@@ -59,7 +59,7 @@ DEFAULTS = {
     # only spent once the free allowance is used up.
     "anon_pixel_daily": 10,                 # anonymous: pixels per day
     "user_pixel_daily": 100,                # account: pixels per day
-    "pixel_cooldown": 30,                   # seconds between pixels
+    "pixel_cooldown": 0,                    # seconds between pixels (0 = none)
     "erase_costs_pixel": True,              # erasing spends quota too
 
     # ------------------------------------------------------- accounts
@@ -91,7 +91,9 @@ DEFAULTS = {
     ],
 
     # -------------------------------------------------- rate limiting
-    "rate_limit": 30,                       # actions per window per IP
+    # A blunt flood guard, not a per-pixel cooldown. Kept high enough that a
+    # full daily allowance can be placed in one sitting (100 for an account).
+    "rate_limit": 140,                      # actions per window per IP
     "rate_window": 10,                      # window in seconds
 
     # -------------------------------------------------------- credits

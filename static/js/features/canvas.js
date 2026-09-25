@@ -160,18 +160,17 @@ TW.feature('canvas', {
         if (res.noop) TW.toast('nothing to erase there');
       } catch (e) {
         if (e.data && e.data.state) TW.paintMeter(e.data.state);
-        if (e.status === 429) {
-          TW.toast(e.message);
-          // paint the cooldown down live so the number is not a guess
-          let left = e.data.cooldown || 0;
+        TW.toast(e.message);
+        // only tick a countdown down when the server actually sent one
+        const cd = e.data && e.data.cooldown;
+        if (e.status === 429 && cd > 0) {
+          let left = cd;
           const tick = setInterval(() => {
             left -= 1;
             const a = TW.state.allowance || {};
             TW.paintMeter(Object.assign({}, a, { cooldown: Math.max(0, left) }));
             if (left <= 0) clearInterval(tick);
           }, 1000);
-        } else {
-          TW.toast(e.message);
         }
       }
     }

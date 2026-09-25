@@ -8,7 +8,7 @@
   "grid_size": 256,
   "anon_pixel_daily": 10,
   "user_pixel_daily": 100,
-  "pixel_cooldown": 30,
+  "pixel_cooldown": 0,
 
   "signup_per_week": 1,
 
