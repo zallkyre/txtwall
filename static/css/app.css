@@ -1,18 +1,51 @@
 /* txtwall — a shared pixel canvas.
- * Dark, quiet, and out of the way. The board is the interface; everything
- * else sits at the edges.
+ *
+ * The board is the interface; everything else sits at the edges. The page
+ * is a flex column so the .stage gets whatever height is left over, and
+ * the grid is centred inside it at any window size.
+ *
+ * Two themes. Every colour is a variable on :root; [data-theme="light"]
+ * only re-points those variables, so a theme switch never needs JS to
+ * restyle anything but the canvas background.
  */
 
-:root {
+:root, [data-theme="dark"] {
   --bg: #0d0d0f;
   --panel: #16161a;
   --panel-2: #1e1e24;
   --line: #2a2a32;
   --text: #e9e9ec;
   --dim: #8a8a96;
+  --faint: #5a5a66;
   --accent: #7c5cff;
   --ok: #3fb950;
   --bad: #f85149;
+  --shadow: rgba(0, 0, 0, 0.55);
+  --scrim: rgba(13, 13, 15, 0.92);
+  --good-bg: rgba(63, 185, 80, 0.13);
+  --good-fg: #9be7a8;
+  --bad-bg: rgba(248, 81, 73, 0.13);
+  --bad-fg: #ffb4ae;
+  --selected: #000000;
+}
+
+[data-theme="light"] {
+  --bg: #f4f4f6;
+  --panel: #ffffff;
+  --panel-2: #e9e9ee;
+  --line: #d3d3dc;
+  --text: #16161a;
+  --dim: #5f5f6b;
+  --faint: #8a8a96;
+  --accent: #5b3df5;
+  --ok: #1a7f37;
+  --bad: #cf222e;
+  --shadow: rgba(20, 20, 40, 0.18);
+  --scrim: rgba(244, 244, 246, 0.92);
+  --good-bg: rgba(26, 127, 55, 0.12);
+  --good-fg: #14532d;
+  --bad-bg: rgba(207, 34, 46, 0.10);
+  --bad-fg: #7f1d1d;
   --selected: #000000;
 }
 
@@ -25,10 +58,20 @@ html, body {
   color: var(--text);
   font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   overflow: hidden;
+  transition: background 0.15s, color 0.15s;
+}
+
+/* the page is a column: fixed chrome on top, the stage takes the rest */
+body {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
 }
 
 button, input, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
+header, .toolbar, .meter, .credits, footer { flex: 0 0 auto; }
 
 /* ---------------------------------------------------------- header */
 header {
@@ -38,13 +81,13 @@ header {
   gap: 12px;
   padding: 10px 16px;
   border-bottom: 1px solid var(--line);
-  background: rgba(13, 13, 15, 0.9);
+  background: var(--scrim);
   position: relative;
   z-index: 5;
 }
 .brand h1 { margin: 0; font-size: 17px; letter-spacing: 0.5px; }
 .brand p { margin: 0; font-size: 12px; color: var(--dim); }
-.head-right { display: flex; align-items: center; gap: 12px; }
+.head-right { display: flex; align-items: center; gap: 8px; }
 .hud { font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
 
 .acct-tab {
@@ -67,7 +110,7 @@ header {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 10px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 12px 40px var(--shadow);
 }
 .panel.open { display: block; }
 .panel .row { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -98,8 +141,8 @@ header {
 .acct-actions { display: flex; gap: 6px; margin-top: 9px; }
 
 .err { margin-top: 9px; padding: 7px 9px; border-radius: 7px; font-size: 12px; }
-.err.bad { background: rgba(248, 81, 73, 0.13); color: #ffb4ae; }
-.err.good { background: rgba(63, 185, 80, 0.13); color: #9be7a8; }
+.err.bad { background: var(--bad-bg); color: var(--bad-fg); }
+.err.good { background: var(--good-bg); color: var(--good-fg); }
 .limits { margin-top: 10px; font-size: 11px; color: var(--dim); }
 
 /* -------------------------------------------------------- toolbar */
@@ -123,6 +166,32 @@ header {
 }
 .swatch.on { border-color: var(--text); box-shadow: 0 0 0 2px var(--selected); }
 
+.zoom {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+.zoom .btn-sm { padding: 7px 9px; min-width: 30px; }
+.zoom-label {
+  min-width: 34px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+.jump { display: flex; gap: 4px; flex: 0 0 auto; }
+.jump input {
+  width: 104px;
+  padding: 6px 8px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font-size: 12px;
+}
+.jump input:focus { outline: none; border-color: var(--accent); }
+
 /* ---------------------------------------------------------- meter */
 .meter {
   display: none;
@@ -145,13 +214,139 @@ header {
 .meter span { font-size: 11px; color: var(--dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 /* ----------------------------------------------------------- board */
+/* the stage is the only flexible row; min-height:0 lets it actually
+   shrink inside the flex column on short windows */
+.stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
 #board {
   display: block;
-  width: 100vw;
+  position: absolute;
+  inset: 0;
   cursor: crosshair;
+  touch-action: none;          /* we handle pan and pinch ourselves */
+  -webkit-user-select: none;
+  user-select: none;
 }
 #board.erasing { cursor: not-allowed; }
 #board.reporting { cursor: help; }
+
+/* --------------------------------------------------------- minimap */
+.minimap {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 132px;
+  padding: 5px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  box-shadow: 0 6px 22px var(--shadow);
+  cursor: crosshair;
+  z-index: 3;
+}
+.minimap canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  border-radius: 5px;
+  background: var(--bg);
+  touch-action: none;
+}
+.minimap-label {
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--faint);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* -------------------------------------------------------- activity */
+.activity-panel {
+  display: none;
+  position: absolute;
+  right: 12px;
+  top: 60px;
+  z-index: 8;
+  width: 268px;
+  max-height: min(60vh, 460px);
+  display: none;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px var(--shadow);
+  overflow: hidden;
+}
+.activity-panel.on { display: flex; }
+.activity-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.tab {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 4px 9px;
+  font-size: 12px;
+  color: var(--dim);
+}
+.tab.on { background: var(--panel-2); border-color: var(--line); color: var(--text); }
+.activity-close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--dim);
+}
+.activity-body {
+  overflow-y: auto;
+  padding: 6px;
+  font-size: 12px;
+  color: var(--dim);
+}
+.feed-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 6px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  text-align: left;
+  color: var(--text);
+}
+.feed-row:hover { background: var(--panel-2); }
+.feed-row .dot { width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--line); }
+.feed-cell { font-variant-numeric: tabular-nums; }
+.feed-ago { margin-left: auto; color: var(--faint); font-size: 11px; }
+
+.board-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 6px;
+}
+.board-row .rank { color: var(--faint); width: 22px; font-variant-numeric: tabular-nums; }
+.board-name {
+  width: 74px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.board-bar { flex: 1 1 auto; height: 6px; background: var(--panel-2); border-radius: 3px; overflow: hidden; }
+.board-bar i { display: block; height: 100%; background: var(--accent); }
+.board-n { color: var(--dim); font-variant-numeric: tabular-nums; width: 30px; text-align: right; }
 
 /* --------------------------------------------------------- credits */
 .credits {
@@ -179,7 +374,7 @@ footer {
 }
 footer .mail { color: var(--text); cursor: pointer; }
 footer .stats, footer .keys { margin-top: 2px; }
-footer .keys { color: #5a5a66; }
+footer .keys { color: var(--faint); }
 
 /* ---------------------------------------------------------- toast */
 .toast {
@@ -207,7 +402,7 @@ footer .keys { color: #5a5a66; }
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.66);
+  background: var(--scrim);
   z-index: 40;
   align-items: center;
   justify-content: center;
@@ -254,7 +449,7 @@ footer .keys { color: #5a5a66; }
   border-radius: 9px;
   z-index: 20;
 }
-.discord-fab svg { width: 17px; height: 17px; color: #8b8b96; }
+.discord-fab svg { width: 17px; height: 17px; color: var(--dim); }
 .discord-pop {
   display: none;
   position: fixed;
@@ -277,7 +472,14 @@ footer .keys { color: #5a5a66; }
 }
 .discord-pop-head button { background: none; border: none; font-size: 18px; cursor: pointer; color: var(--dim); }
 
+@media (max-width: 900px) {
+  .zoom { margin-left: 0; }
+  .jump { display: none; }
+}
 @media (max-width: 640px) {
   .panel { right: 8px; left: 8px; width: auto; }
   .hud { display: none; }
+  .minimap { width: 92px; right: 8px; bottom: 8px; }
+  .activity-panel { left: 8px; right: 8px; width: auto; }
+  footer .keys { display: none; }
 }

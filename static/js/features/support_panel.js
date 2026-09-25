@@ -34,9 +34,11 @@
 
       const stats = document.getElementById('supportStats');
       if (!stats) return;
+      const plural = (n, word) => n + ' ' + word + (n === 1 ? '' : 's');
       TW.api('/api/stats').then((s) => {
         stats.textContent = s.painted + ' of ' + s.cells + ' cells painted · ' +
-          s.painted_today + ' today · ' + s.accounts + ' accounts · nothing expires';
+          s.painted_today + ' today · ' + plural(s.artists || 0, 'artist') + ' · ' +
+          plural(s.accounts, 'account') + ' · nothing expires';
       }).catch(() => { stats.textContent = ''; });
     }
   });

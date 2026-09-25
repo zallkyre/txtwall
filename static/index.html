@@ -1,11 +1,22 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="description" content="txtwall — one shared pixel canvas. 10 pixels a day, 100 with an account. Nothing expires.">
+<meta name="color-scheme" content="dark light">
 <title>txtwall</title>
-<link rel="stylesheet" href="/css/app.css?v=3">
+<link rel="stylesheet" href="/css/app.css?v=4">
+<script>
+  /* apply the saved theme before first paint so there is no flash */
+  (function () {
+    try {
+      var t = localStorage.getItem('txtwall.theme');
+      if (!t && window.matchMedia('(prefers-color-scheme: light)').matches) t = 'light';
+      document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
+    } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
+  })();
+</script>
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -17,6 +28,8 @@
   </div>
   <div class="head-right">
     <span class="hud" id="hud">loading...</span>
+    <button class="btn-sm btn-ghost" id="activityBtn" title="live activity (I)">activity</button>
+    <button class="btn-sm btn-ghost" id="themeBtn" title="switch theme">&#9790;</button>
     <button class="acct-tab" id="acctTab">account</button>
   </div>
 </header>
@@ -39,8 +52,19 @@
 <div class="toolbar">
   <div class="palette" id="palette"></div>
   <button class="btn-sm btn-ghost" id="eraseBtn" title="erase mode (E) — costs a pixel">erase</button>
-  <button class="btn-sm btn-ghost" onclick="location.hash='';location.reload()" title="back to the whole canvas">fit</button>
   <button class="btn-sm btn-ghost" id="reportHint" title="report a pixel">report</button>
+  <div class="zoom" role="group" aria-label="zoom">
+    <button class="btn-sm btn-ghost" id="zoomOut" title="zoom out (-)">&minus;</button>
+    <span class="zoom-label" id="zoomLabel">1x</span>
+    <button class="btn-sm btn-ghost" id="zoomIn" title="zoom in (+)">+</button>
+    <button class="btn-sm btn-ghost" id="fitBtn" title="fit whole board (0)">fit</button>
+    <button class="btn-sm btn-ghost" id="centreBtn" title="centre board (C)">centre</button>
+    <button class="btn-sm btn-ghost" id="linkBtn" title="copy a link to the cell you are on">link</button>
+  </div>
+  <div class="jump">
+    <input id="jump" placeholder="go to 128,127" maxlength="11" inputmode="numeric" aria-label="jump to cell">
+    <button class="btn-sm btn-ghost" id="jumpBtn" title="jump">go</button>
+  </div>
 </div>
 
 <!-- daily allowance meter -->
@@ -49,8 +73,27 @@
   <span id="meterText">…</span>
 </div>
 
-<!-- the board -->
-<canvas id="board"></canvas>
+<!-- the board sits in a stage that flexes to the space that is left, so
+     the grid is always centred in the room actually available to it -->
+<div class="stage" id="stage">
+  <canvas id="board"></canvas>
+
+  <!-- minimap: whole board, with the current view highlighted -->
+  <div class="minimap" id="minimap" title="click or drag to move around">
+    <canvas id="miniCanvas"></canvas>
+    <div class="minimap-label" id="miniBox">256 × 256</div>
+  </div>
+</div>
+
+<!-- live activity / leaderboard -->
+<div class="activity-panel" id="activityPanel">
+  <div class="activity-head">
+    <button class="tab on" id="tabFeed">activity</button>
+    <button class="tab" id="tabBoard">top artists</button>
+    <button class="activity-close" id="activityClose" aria-label="close">&times;</button>
+  </div>
+  <div class="activity-body" id="activityBody"></div>
+</div>
 
 <!-- credits -->
 <div class="credits" id="creditsBox">
@@ -67,7 +110,7 @@
   <div id="supportLine"></div>
   <div id="footerNote">one shared canvas. nobody's pixels expire.</div>
   <div class="stats" id="supportStats"></div>
-  <div class="keys">click place · right-click erase · E erase mode · wheel zoom · drag pan · F fit · G grid</div>
+  <div class="keys">click place · right-click erase · E erase · R report · wheel zoom · drag pan · arrows/WASD move · 0 fit · C centre · G grid · I activity · L top artists</div>
 </footer>
 
 <!-- report dialog -->
@@ -96,16 +139,19 @@
 </div>
 
 <!-- core first, then the registry, then every feature, then boot.
-     ?v=3 busts stale browser/Cloudflare copies; bump it whenever the
-     frontend changes. -->
-<script src="/js/core.js?v=3"></script>
-<script src="/js/registry.js?v=3"></script>
-<script src="/js/features/canvas.js?v=3"></script>
-<script src="/js/features/accounts.js?v=3"></script>
-<script src="/js/features/credits.js?v=3"></script>
-<script src="/js/features/support_panel.js?v=3"></script>
-<script src="/js/features/report.js?v=3"></script>
-<script src="/js/features/discord.js?v=3"></script>
-<script src="/js/app.js?v=3"></script>
+     ?v=4 busts stale browser/Cloudflare copies; bump it whenever the
+     frontend changes. canvas must come before nav: it owns TW.state.view. -->
+<script src="/js/core.js?v=4"></script>
+<script src="/js/registry.js?v=4"></script>
+<script src="/js/features/canvas.js?v=4"></script>
+<script src="/js/features/nav.js?v=4"></script>
+<script src="/js/features/theme.js?v=4"></script>
+<script src="/js/features/activity.js?v=4"></script>
+<script src="/js/features/accounts.js?v=4"></script>
+<script src="/js/features/credits.js?v=4"></script>
+<script src="/js/features/support_panel.js?v=4"></script>
+<script src="/js/features/report.js?v=4"></script>
+<script src="/js/features/discord.js?v=4"></script>
+<script src="/js/app.js?v=4"></script>
 </body>
 </html>
