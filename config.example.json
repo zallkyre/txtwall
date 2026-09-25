@@ -1,0 +1,22 @@
+{
+  "_comment": "Copy to config.json and edit. Only the keys you include are overridden. config.json is git-ignored, so this is yours alone. Never put secrets here - use TXTWALL_* environment variables instead.",
+
+  "support_email": "owner@txtwall.xyz",
+  "support_label": "email support",
+
+  "features": {
+    "wall": true,
+    "reactions": true,
+    "random_message": true,
+    "accounts": true,
+    "search": true,
+    "support_panel": true,
+    "report": false
+  },
+
+  "ttl_seconds": 86400,
+  "anon_msg_daily": 5,
+  "anon_img_daily": 1,
+  "user_msg_daily": 250,
+  "user_img_daily": 50
+}

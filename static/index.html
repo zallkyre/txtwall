@@ -3,289 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="txtwall — an anonymous, encrypted message wall. Messages vanish after 24 hours.">
 <title>txtwall</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    background: #0d0d0f;
-    color: #e8e8ea;
-    font-family: ui-monospace, 'Cascadia Code', monospace;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-  header {
-    width: 100%;
-    max-width: 560px;
-    padding: 24px 16px 12px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  .brand h1 { font-size: 1.6rem; letter-spacing: -0.02em; }
-  .brand p { color: #8a8a93; font-size: 0.75rem; margin-top: 2px; }
-
-  /* account tab (top right) */
-  .acct-tab {
-    background: #16161a;
-    border: 1px solid #26262c;
-    color: #e8e8ea;
-    font-family: inherit;
-    font-size: 0.75rem;
-    font-weight: 600;
-    padding: 7px 14px;
-    border-radius: 999px;
-    cursor: pointer;
-    transition: border-color 0.15s ease, background 0.15s ease;
-  }
-  .acct-tab:hover { border-color: #5865f2; background: #1c1c21; }
-  .acct-tab.logged { border-color: #30d158; }
-
-  main {
-    width: 100%;
-    max-width: 560px;
-    padding: 0 16px 60px;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-  }
-
-  /* account panel (dropdown under tab) */
-  .panel {
-    background: #16161a;
-    border: 1px solid #26262c;
-    border-radius: 10px;
-    padding: 12px;
-    display: none;
-    flex-direction: column;
-    gap: 8px;
-    font-size: 0.8rem;
-  }
-  .panel.open { display: flex; animation: fade 0.15s ease; }
-  .panel .row { display: flex; gap: 8px; align-items: center; }
-  .panel input {
-    flex: 1;
-    background: #0d0d0f;
-    border: 1px solid #26262c;
-    border-radius: 6px;
-    color: #e8e8ea;
-    font-family: inherit;
-    font-size: 0.8rem;
-    padding: 6px 8px;
-    outline: none;
-  }
-  .panel input:focus { border-color: #5865f2; }
-  .panel .btn-sm { padding: 6px 10px; font-size: 0.75rem; }
-  .panel .btn-ghost { background: transparent; color: #8a8a93; border: 1px solid #26262c; }
-  .panel .btn-ghost:hover { color: #e8e8ea; }
-  .panel .info { color: #8a8a93; font-size: 0.72rem; line-height: 1.5; }
-  .panel .info b { color: #e8e8ea; font-weight: 600; }
-  .panel .quota { color: #8a8a93; font-size: 0.72rem; }
-  .panel .quota b { color: #30d158; font-weight: 600; }
-  .panel .quota.warn b { color: #febc2e; }
-  .panel .quota.full b { color: #ff453a; }
-  .panel .err { color: #ff453a; font-size: 0.72rem; }
-  .panel .ok { color: #30d158; font-size: 0.72rem; }
-  .perm-row { display: flex; align-items: center; gap: 6px; font-size: 0.72rem; color: #8a8a93; }
-  .perm-row input { width: auto; flex: none; }
-
-  .composer {
-    background: #16161a;
-    border: 1px solid #26262c;
-    border-radius: 10px;
-    padding: 10px;
-    display: flex;
-    gap: 8px;
-    align-items: flex-end;
-    transition: border-color 0.15s ease;
-  }
-  .composer.drag { border-color: #5865f2; background: #1a1a20; }
-  textarea {
-    flex: 1;
-    background: transparent;
-    border: none;
-    outline: none;
-    color: #e8e8ea;
-    font-family: inherit;
-    font-size: 0.95rem;
-    resize: none;
-    min-height: 44px;
-    max-height: 120px;
-  }
-  textarea::placeholder { color: #8a8a93; }
-  button {
-    background: #e8e8ea;
-    color: #0d0d0f;
-    border: none;
-    font-family: inherit;
-    font-weight: 600;
-    font-size: 0.85rem;
-    padding: 8px 16px;
-    border-radius: 8px;
-    cursor: pointer;
-  }
-  button:hover { opacity: 0.8; }
-  button:disabled { opacity: 0.3; cursor: default; }
-  .wall { display: flex; flex-direction: column; gap: 8px; }
-  .msg {
-    background: #16161a;
-    border: 1px solid #26262c;
-    border-radius: 10px;
-    padding: 10px 12px;
-    animation: fade 0.25s ease;
-  }
-  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
-  .msg .text { font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
-  .msg img { max-width: 100%; border-radius: 8px; display: block; margin-top: 6px; }
-  .msg .meta { margin-top: 6px; font-size: 0.7rem; color: #8a8a93; display: flex; justify-content: space-between; }
-  .msg .reacts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
-  .react {
-    background: #0d0d0f;
-    border: 1px solid #26262c;
-    border-radius: 999px;
-    color: #e8e8ea;
-    font-family: inherit;
-    font-size: 0.75rem;
-    padding: 2px 8px;
-    cursor: pointer;
-    transition: border-color 0.15s ease;
-  }
-  .react:hover { border-color: #5865f2; }
-  .react .n { color: #8a8a93; margin-left: 3px; }
-  .react-add { background: transparent; border: 1px dashed #26262c; color: #8a8a93; }
-  .react-add:hover { border-color: #5865f2; color: #e8e8ea; }
-  .empty { text-align: center; color: #8a8a93; padding: 40px 0; font-size: 0.85rem; }
-  footer { color: #8a8a93; font-size: 0.7rem; padding: 16px; text-align: center; max-width: 560px; }
-
-  /* top bar: viewers + surprise */
-  .topbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 0.72rem;
-    color: #8a8a93;
-  }
-  .viewers { display: flex; align-items: center; gap: 6px; }
-  .viewers .dot {
-    width: 7px; height: 7px; border-radius: 50%;
-    background: #30d158; display: inline-block;
-    animation: blink 2s infinite;
-  }
-  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-  .surprise {
-    background: transparent;
-    border: 1px solid #26262c;
-    color: #8a8a93;
-    font-family: inherit;
-    font-size: 0.72rem;
-    padding: 4px 10px;
-    border-radius: 999px;
-    cursor: pointer;
-  }
-  .surprise:hover { border-color: #5865f2; color: #e8e8ea; }
-
-  /* upgrade banner */
-  .upgrade {
-    display: none;
-    background: #1a1a20;
-    border: 1px solid #5865f2;
-    border-radius: 10px;
-    padding: 10px 12px;
-    font-size: 0.78rem;
-    color: #8a8a93;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-  }
-  .upgrade.show { display: flex; }
-  .upgrade b { color: #e8e8ea; }
-  .upgrade button { padding: 6px 12px; font-size: 0.75rem; background: #5865f2; color: #fff; }
-
-  /* image picker + preview */
-  .img-pick {
-    background: transparent;
-    border: 1px dashed #26262c;
-    color: #8a8a93;
-    font-size: 0.7rem;
-    padding: 6px 10px;
-    border-radius: 8px;
-    cursor: pointer;
-  }
-  .img-pick:hover { border-color: #5865f2; color: #e8e8ea; }
-  .img-preview {
-    max-width: 120px;
-    max-height: 120px;
-    border-radius: 8px;
-    display: none;
-    border: 1px solid #26262c;
-  }
-  .img-preview.show { display: block; }
-
-  /* discord widget - small, collapsible */
-  .discord-fab {
-    position: fixed;
-    right: 16px;
-    bottom: 16px;
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    background: #16161a;
-    border: 1px solid #26262c;
-    color: #e8e8ea;
-    font-family: inherit;
-    font-size: 0.75rem;
-    font-weight: 600;
-    padding: 8px 14px;
-    border-radius: 999px;
-    cursor: pointer;
-    z-index: 50;
-    transition: border-color 0.15s ease, background 0.15s ease;
-  }
-  .discord-fab:hover { border-color: #5865f2; background: #1c1c21; }
-  .discord-fab svg { width: 16px; height: 16px; display: block; }
-  .discord-pop {
-    position: fixed;
-    right: 16px;
-    bottom: 62px;
-    width: 280px;
-    background: #16161a;
-    border: 1px solid #26262c;
-    border-radius: 10px;
-    overflow: hidden;
-    z-index: 50;
-    display: none;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
-  }
-  .discord-pop.open { display: block; animation: popup 0.18s ease; }
-  @keyframes popup { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-  .discord-pop-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 8px 12px;
-    border-bottom: 1px solid #26262c;
-    font-size: 0.72rem;
-    color: #8a8a93;
-  }
-  .discord-pop-head button {
-    background: none;
-    border: none;
-    color: #8a8a93;
-    font-size: 0.9rem;
-    padding: 0 4px;
-    cursor: pointer;
-  }
-  .discord-pop-head button:hover { color: #e8e8ea; opacity: 1; }
-  .discord-pop iframe {
-    width: 350px;
-    height: 500px;
-    border: 0;
-    transform: scale(0.8);
-    transform-origin: top left;
-    display: block;
-  }
-</style>
+<link rel="stylesheet" href="/css/app.css">
 </head>
 <body>
 <header>
@@ -295,6 +15,7 @@
   </div>
   <button class="acct-tab" id="acctTab">account</button>
 </header>
+
 <main>
 
   <!-- account panel (dropdown) -->
@@ -314,21 +35,54 @@
     <button class="surprise" id="surpriseBtn">surprise me</button>
   </div>
 
-  <!-- upgrade banner: shown when anon quota is hit -->
+  <!-- search (shown by js/features/search.js when enabled) -->
+  <div class="searchbar" id="searchbar" style="display:none">
+    <input id="searchInput" type="search" placeholder="search loaded messages, or #12 to jump to one" autocomplete="off">
+    <span class="count" id="searchCount"></span>
+    <button id="searchClear" title="clear search">clear</button>
+  </div>
+
+  <!-- upgrade banner: shown when the anon quota is hit -->
   <div class="upgrade" id="upgrade">
-    <span><b>daily limit reached.</b> log in for 250 messages / 50 images a day.</span>
+    <span><b>daily limit reached.</b> <span id="upgradeText">log in for a higher daily limit.</span></span>
     <button id="upgradeBtn">log in</button>
   </div>
 
   <div class="composer" id="composer">
-    <textarea id="input" placeholder="say something... (ctrl+v or drag an image)" maxlength="500"></textarea>
+    <div class="col">
+      <textarea id="input" placeholder="say something... (ctrl+v or drag an image)" maxlength="500"></textarea>
+      <div class="under">
+        <span>encrypted in your browser before it is sent</span>
+        <span class="count" id="charCount">0/500</span>
+      </div>
+    </div>
     <button class="img-pick" id="imgBtn" title="attach image (scaled to 1080x1080)">img</button>
     <img class="img-preview" id="imgPreview" alt="preview">
     <button id="postbtn" disabled>post</button>
   </div>
+
   <div class="wall" id="wall"></div>
 </main>
-<footer>messages are encrypted in your browser. the server only stores ciphertext. images are re-encoded and scaled to 1080x1080. messages auto-delete after 24h.</footer>
+
+<footer>
+  <div id="supportLine"></div>
+  <div id="footerNote">messages are encrypted in your browser. the server only stores ciphertext. images are re-encoded and scaled to 1080x1080. messages auto-delete after 24h.</div>
+  <div class="stats" id="supportStats"></div>
+</footer>
+
+<!-- report dialog (mounted by js/features/report.js) -->
+<div class="dialog-back" id="reportBack">
+  <div class="dialog">
+    <h3>report message <span id="reportId"></span></h3>
+    <p>Tell the owner what's wrong with it. The message stays up either way — the owner decides what to remove.</p>
+    <textarea id="reportReason" maxlength="500" placeholder="spam, abuse, something illegal..."></textarea>
+    <div class="actions">
+      <button class="btn-ghost" id="reportCancel">cancel</button>
+      <button id="reportSubmit">send report</button>
+    </div>
+    <div class="note">Your IP is included so the owner can spot repeat abuse.</div>
+  </div>
+</div>
 
 <button class="discord-fab" id="discordFab" aria-label="open discord">
   <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.317 4.369a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>
@@ -337,334 +91,23 @@
 <div class="discord-pop" id="discordPop">
   <div class="discord-pop-head">
     <span>volos discord</span>
-    <button id="discordClose" aria-label="close">×</button>
+    <button id="discordClose" aria-label="close">&times;</button>
   </div>
   <iframe src="https://discord.com/widget?id=1548444097033928786&theme=dark" width="350" height="500" allowtransparency="true" frameborder="0" sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"></iframe>
 </div>
 
-<script>
-const enc = new TextEncoder();
-const dec = new TextDecoder();
-
-// one shared key for the whole wall — everyone reads and writes the same messages
-const KEY_STRING = 'txtwall-shared-key-v1';
-
-async function getKey() {
-  const digest = await crypto.subtle.digest('SHA-256', enc.encode(KEY_STRING));
-  return crypto.subtle.importKey('raw', digest, 'AES-GCM', false, ['encrypt', 'decrypt']);
-}
-
-const b64 = (u8) => btoa(String.fromCharCode(...u8));
-const unb64 = (s) => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-
-async function encrypt(text) {
-  const key = await getKey();
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(text));
-  return { ct: b64(new Uint8Array(ct)), iv: b64(iv) };
-}
-
-async function decrypt(ctB64, ivB64) {
-  const key = await getKey();
-  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(ivB64) }, key, unb64(ctB64));
-  return dec.decode(pt);
-}
-
-const input = document.getElementById('input');
-const postbtn = document.getElementById('postbtn');
-const wall = document.getElementById('wall');
-const imgBtn = document.getElementById('imgBtn');
-const imgPreview = document.getElementById('imgPreview');
-const composer = document.getElementById('composer');
-const upgrade = document.getElementById('upgrade');
-let pendingImage = null;
-
-function setImage(file) {
-  if (!file) return;
-  if (!file.type.startsWith('image/')) { alert('that is not an image'); return; }
-  if (file.size > 5 * 1024 * 1024) { alert('image too large (max 5MB)'); return; }
-  pendingImage = file;
-  imgPreview.src = URL.createObjectURL(file);
-  imgPreview.classList.add('show');
-  postbtn.disabled = input.value.trim().length === 0 && !pendingImage;
-}
-
-input.addEventListener('input', () => {
-  postbtn.disabled = input.value.trim().length === 0 && !pendingImage;
-});
-
-// file picker
-imgBtn.addEventListener('click', () => {
-  const f = document.createElement('input');
-  f.type = 'file';
-  f.accept = 'image/*';
-  f.onchange = () => setImage(f.files[0]);
-  f.click();
-});
-
-// ctrl+v paste
-document.addEventListener('paste', (e) => {
-  const items = e.clipboardData && e.clipboardData.items;
-  if (!items) return;
-  for (const item of items) {
-    if (item.type.startsWith('image/')) {
-      const file = item.getAsFile();
-      if (file) { setImage(file); e.preventDefault(); return; }
-    }
-  }
-});
-
-// drag & drop
-['dragenter', 'dragover'].forEach(ev => composer.addEventListener(ev, (e) => {
-  e.preventDefault();
-  composer.classList.add('drag');
-}));
-['dragleave', 'drop'].forEach(ev => composer.addEventListener(ev, (e) => {
-  e.preventDefault();
-  composer.classList.remove('drag');
-}));
-composer.addEventListener('drop', (e) => {
-  const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-  if (file) setImage(file);
-});
-
-async function post() {
-  const text = input.value.trim();
-  if (!text && !pendingImage) return;
-  postbtn.disabled = true;
-  try {
-    if (pendingImage) {
-      const res = await fetch('/api/post/image', { method: 'POST', body: pendingImage });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        alert(j.error || 'image rejected');
-        postbtn.disabled = false;
-        return;
-      }
-      pendingImage = null;
-      imgPreview.classList.remove('show');
-      imgPreview.src = '';
-    }
-    if (text) {
-      const { ct, iv } = await encrypt(text);
-      const res = await fetch('/api/post', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ct, iv })
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        if (res.status === 429 && j.error && j.error.includes('limit')) {
-          upgrade.classList.add('show');
-        }
-        alert(j.error || 'post rejected');
-        postbtn.disabled = false;
-        return;
-      }
-    }
-    input.value = '';
-    postbtn.disabled = true;
-    await refresh();
-    await refreshMe();
-  } catch (e) {
-    console.error(e);
-    postbtn.disabled = false;
-  }
-}
-
-postbtn.addEventListener('click', post);
-input.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); post(); }
-});
-
-function escapeHtml(s) {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-async function refresh() {
-  try {
-    const res = await fetch('/api/messages');
-    const data = await res.json();
-    const viewers = data.length && data[data.length - 1].viewers !== undefined
-      ? data.pop().viewers : 0;
-    document.getElementById('viewerCount').textContent = viewers;
-    const all = [];
-    for (const m of data) {
-      let text = '';
-      if (m.ct) {
-        try { text = await decrypt(m.ct, m.iv); } catch (e) { continue; }
-      }
-      const t = new Date(m.created_at * 1000);
-      const time = t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      all.push({ id: m.id, text, time, image: m.image, reactions: m.reactions || {} });
-    }
-    if (!all.length) {
-      wall.innerHTML = '<div class="empty">nothing here yet. post the first message.</div>';
-      return;
-    }
-    wall.innerHTML = all.map(m => {
-      const reacts = Object.entries(m.reactions).map(([e, n]) =>
-        `<button class="react" data-id="${m.id}" data-emoji="${e}">${e}<span class="n">${n}</span></button>`
-      ).join('');
-      return `<div class="msg">${m.text ? `<div class="text">${escapeHtml(m.text)}</div>` : ''}${m.image ? `<img src="/uploads/${m.image}" loading="lazy" alt="image">` : ''}<div class="meta"><span>#${m.id}</span><span>${m.time}</span></div>${reacts ? `<div class="reacts">${reacts}<button class="react react-add" data-id="${m.id}">+</button></div>` : ''}</div>`;
-    }).join('');
-    // react buttons
-    wall.querySelectorAll('.react').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const id = parseInt(btn.dataset.id, 10);
-        const emoji = btn.dataset.emoji;
-        if (emoji) {
-          await fetch('/api/react', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message_id: id, emoji })
-          });
-        } else {
-          const pick = prompt('emoji to add:');
-          if (pick && pick.trim()) {
-            await fetch('/api/react', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ message_id: id, emoji: pick.trim() })
-            });
-          }
-        }
-        refresh();
-      });
-    });
-  } catch (e) {
-    console.error(e);
-  }
-}
-
-// surprise me: fetch a random message and scroll to it
-document.getElementById('surpriseBtn').addEventListener('click', async () => {
-  try {
-    const res = await fetch('/api/messages/random');
-    const m = await res.json();
-    if (!m.found) { alert('nothing to surprise you with yet'); return; }
-    let text = '';
-    if (m.ct) {
-      try { text = await decrypt(m.ct, m.iv); } catch (e) { text = '(undecryptable)'; }
-    }
-    const t = new Date(m.created_at * 1000);
-    const time = t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const el = document.createElement('div');
-    el.className = 'msg';
-    el.style.borderColor = '#5865f2';
-    el.innerHTML = `${text ? `<div class="text">${escapeHtml(text)}</div>` : ''}${m.image ? `<img src="/uploads/${m.image}" loading="lazy" alt="image">` : ''}<div class="meta"><span>#${m.id} (random)</span><span>${time}</span></div>`;
-    wall.prepend(el);
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    setTimeout(() => el.style.borderColor = '', 4000);
-  } catch (e) { console.error(e); }
-});
-
-refresh();
-setInterval(refresh, 5000);
-
-// ---------- accounts ----------
-const panel = document.getElementById('panel');
-const acctTab = document.getElementById('acctTab');
-const authRow = document.getElementById('authRow');
-const authInfo = document.getElementById('authInfo');
-const authErr = document.getElementById('authErr');
-const userIn = document.getElementById('user');
-const passIn = document.getElementById('pass');
-
-acctTab.addEventListener('click', () => panel.classList.toggle('open'));
-document.getElementById('upgradeBtn').addEventListener('click', () => {
-  panel.classList.add('open');
-  upgrade.classList.remove('show');
-});
-
-function showErr(msg) {
-  authErr.textContent = msg;
-  authErr.style.display = 'block';
-  setTimeout(() => authErr.style.display = 'none', 4000);
-}
-
-function renderAccount(me) {
-  const [mUsed, mMax] = me.quota ? me.quota.messages : [0, 0];
-  const [iUsed, iMax] = me.quota ? me.quota.images : [0, 0];
-  const qClass = mUsed >= mMax ? 'full' : (mUsed >= mMax * 0.8 ? 'warn' : '');
-
-  if (!me.logged_in) {
-    authRow.style.display = 'flex';
-    acctTab.textContent = 'account';
-    acctTab.classList.remove('logged');
-    // anonymous: show remaining posts + upgrade banner when capped
-    authInfo.innerHTML =
-      `<span class="quota ${qClass}">anonymous — messages <b>${mUsed}/${mMax}</b> · images <b>${iUsed}/${iMax}</b> today</span><br>` +
-      `<span class="info">log in or sign up for 250 messages / 50 images a day.</span>`;
-    authInfo.style.display = 'block';
-    if (mUsed >= mMax || iUsed >= iMax) {
-      upgrade.classList.add('show');
-    } else {
-      upgrade.classList.remove('show');
-    }
-    return;
-  }
-  authRow.style.display = 'none';
-  acctTab.textContent = me.username;
-  acctTab.classList.add('logged');
-  authInfo.innerHTML =
-    `<b>${escapeHtml(me.username)}</b> — account #${me.account_number}${me.permanent ? ' (permanent)' : ' (rotates on login)'}<br>` +
-    `<span class="quota ${qClass}">messages <b>${mUsed}/${mMax}</b> · images <b>${iUsed}/${iMax}</b> today</span><br>` +
-    `<label class="perm-row"><input type="checkbox" id="permBox" ${me.permanent ? 'checked' : ''}> keep this account number permanent</label> ` +
-    `<button class="btn-sm btn-ghost" id="logoutBtn">log out</button>`;
-  authInfo.style.display = 'block';
-
-  document.getElementById('permBox').addEventListener('change', async (e) => {
-    await fetch('/api/account/permanent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ permanent: e.target.checked })
-    });
-    refreshMe();
-  });
-  document.getElementById('logoutBtn').addEventListener('click', async () => {
-    await fetch('/api/logout', { method: 'POST' });
-    refreshMe();
-  });
-}
-
-async function refreshMe() {
-  try {
-    const res = await fetch('/api/me');
-    const me = await res.json();
-    renderAccount(me);
-    if (me.logged_in) upgrade.classList.remove('show');
-  } catch (e) { console.error(e); }
-}
-
-async function doAuth(mode) {
-  const username = userIn.value.trim();
-  const password = passIn.value;
-  if (!username || !password) { showErr('enter username and password'); return; }
-  const res = await fetch('/api/' + mode, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password })
-  });
-  const j = await res.json();
-  if (!res.ok) { showErr(j.error || 'failed'); return; }
-  userIn.value = '';
-  passIn.value = '';
-  refreshMe();
-}
-
-document.getElementById('loginBtn').addEventListener('click', () => doAuth('login'));
-document.getElementById('signupBtn').addEventListener('click', () => doAuth('signup'));
-
-refreshMe();
-panel.classList.add('open');
-
-// discord widget toggle
-const discordFab = document.getElementById('discordFab');
-const discordPop = document.getElementById('discordPop');
-const discordClose = document.getElementById('discordClose');
-discordFab.addEventListener('click', () => discordPop.classList.toggle('open'));
-discordClose.addEventListener('click', () => discordPop.classList.remove('open'));
-</script>
+<!-- core first, then the registry, then every feature, then boot -->
+<script src="/js/core.js"></script>
+<script src="/js/registry.js"></script>
+<script src="/js/features/wall.js"></script>
+<script src="/js/features/reactions.js"></script>
+<script src="/js/features/accounts.js"></script>
+<script src="/js/features/random_message.js"></script>
+<script src="/js/features/search.js"></script>
+<script src="/js/features/permalink.js"></script>
+<script src="/js/features/support_panel.js"></script>
+<script src="/js/features/report.js"></script>
+<script src="/js/features/discord.js"></script>
+<script src="/js/app.js"></script>
 </body>
 </html>
