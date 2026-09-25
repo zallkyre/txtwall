@@ -1,14 +1,21 @@
-"""Reporting a message to the site owner.
+"""Reporting a pixel to the site owner.
 
 The visitor never sees an email form. They type a reason, the server
-forwards it to the Cloudflare mail worker, and the worker decides whether
-Groq can answer automatically or a human gets pinged on Discord.
+records it against that cell and forwards it to the Cloudflare mail
+worker, which decides whether Groq can answer automatically or a human gets
+pinged on Discord.
 
-The recipient is fixed in config (``report_email``). A client can never
-choose where mail goes, so this endpoint cannot be used as a relay.
+Two things worth knowing:
+
+* The recipient is fixed in config (``report_email``). A client can never
+  choose where mail goes, so this endpoint cannot be used as a relay.
+* Reports are stored, not just emailed, so the owner can mark one valid
+  later and pay the reporter in credits. That is the "earn pixels" half of
+  the economy and it needs no payment processor.
 """
 
 import json
+import time
 import urllib.error
 import urllib.request
 
@@ -16,8 +23,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from .. import security
-from ..config import CONFIG
+from .. import accounts, db, security
+from ..config import CONFIG, GRID_SIZE
 from . import feature
 
 router = APIRouter()
@@ -26,7 +33,8 @@ MAX_REASON = 500
 
 
 class Report(BaseModel):
-    message_id: int = Field(ge=1)
+    x: int = Field(ge=0)
+    y: int = Field(ge=0)
     reason: str = Field(default="", max_length=MAX_REASON)
 
 
@@ -58,17 +66,38 @@ def _send_via_worker(subject: str, body: str) -> tuple:
 
 @router.post("/api/report")
 def report(body: Report, request: Request):
+    if not (0 <= body.x < GRID_SIZE and 0 <= body.y < GRID_SIZE):
+        return JSONResponse({"ok": False, "error": "out of bounds"}, status_code=400)
+
     ip = security.client_ip(request)
     if security.rate_limited(ip):
         return security.too_many()
 
+    user = accounts.current_user(request)
     reason = body.reason.strip() or "(no reason given)"
-    subject = f"{CONFIG['report_subject_prefix']} message #{body.message_id}"
+
+    # stored first, so a confirmed report can be paid out later
+    conn = db.db()
+    conn.execute(
+        "INSERT INTO reports (x, y, reason, ip, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (
+            body.x,
+            body.y,
+            reason,
+            ip,
+            user["id"] if user else None,
+            int(time.time()),        ),
+    )
+    conn.commit()
+    conn.close()
+
+    subject = f"{CONFIG['report_subject_prefix']} pixel {body.x},{body.y}"
     text = (
-        f"A visitor reported message #{body.message_id} on the wall.\n\n"
+        f"A visitor reported the pixel at {body.x},{body.y} on the canvas.\n\n"
         f"Reason: {reason}\n"
         f"Reported from IP: {ip}\n"
-        f"Link: {str(request.base_url).rstrip('/')}#m{body.message_id}\n"
+        f"Account: {user['username'] if user else 'anonymous'}\n"
+        f"Link: {str(request.base_url).rstrip('/')}#p{body.x}.{body.y}\n"
     )
 
     ok, err = _send_via_worker(subject, text)
@@ -82,12 +111,12 @@ def report(body: Report, request: Request):
             },
             status_code=502,
         )
-    return {"ok": True}
+    return {"ok": True, "reward_note": "if the owner agrees, this earns you pixels"}
 
 
 feature(
     "report",
     router,
-    title="Report a message",
-    description="visitors can flag a message; it lands in the owner's inbox and Discord.",
+    title="Report a pixel",
+    description="flag a pixel; it lands in the owner's inbox and can pay you credits.",
 )

@@ -1,10 +1,11 @@
 [Unit]
-Description=txtwall encrypted wall
+Description=txtwall pixel canvas
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 WorkingDirectory=/home/zallkyre/txtwall
+EnvironmentFile=-/home/zallkyre/txtwall/.env
 ExecStart=/usr/bin/python3 -m uvicorn app:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=5

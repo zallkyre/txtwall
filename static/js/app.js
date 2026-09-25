@@ -36,10 +36,18 @@
     if (config.limits && config.limits.user) {
       const up = document.getElementById('upgradeText');
       if (up) {
-        up.textContent = 'log in for ' + config.limits.user.messages + ' messages / ' +
-          config.limits.user.images + ' images a day.';
+        up.textContent = 'sign in for ' + config.limits.user + ' pixels a day instead of ' +
+          config.limits.anon + '.';
+      }
+      const hint = document.getElementById('limitsHint');
+      if (hint) {
+        hint.textContent = config.limits.anon + ' a day anonymous · ' +
+          config.limits.user + ' a day with an account · ' + (config.cooldown || 0) + 's apart';
       }
     }
+
+    // let the canvas know the free allowance for the sign-up nudge
+    TW.state.anonDaily = config.limits ? config.limits.anon : null;
 
     const mounted = TW.mountFeatures(config.features);
     console.log('txtwall features:', mounted.join(', '));

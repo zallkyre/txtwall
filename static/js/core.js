@@ -10,15 +10,7 @@ window.TW = window.TW || {};
 
   TW.config = {};
   TW.features = [];
-  TW.renderHooks = [];
-  TW.state = { messages: [], me: null, viewers: 0 };
-
-  // Run a callback after every wall re-render. Features that decorate
-  // messages (report buttons, highlighting) register here instead of
-  // polling the DOM.
-  TW.onRender = function (fn) {
-    TW.renderHooks.push(fn);
-  };
+  TW.state = { pixels: new Map(), cursor: 0, me: null, size: 256, palette: [] };
 
   // ---------- tiny DOM helper ----------
   TW.dom = {
@@ -30,6 +22,7 @@ window.TW = window.TW || {};
         if (k === 'class') node.className = attrs[k];
         else if (k === 'text') node.textContent = attrs[k];
         else if (k === 'html') node.innerHTML = attrs[k];
+        else if (k === 'style') node.setAttribute('style', attrs[k]);
         else if (k.startsWith('on')) node.addEventListener(k.slice(2), attrs[k]);
         else if (attrs[k] !== null && attrs[k] !== undefined) node.setAttribute(k, attrs[k]);
       }
@@ -89,39 +82,28 @@ window.TW = window.TW || {};
     }
   };
 
-  // ---------- encryption ----------
-  // One shared key for the whole wall: everyone reads and writes the same
-  // messages. The server only ever sees ciphertext.
-  const KEY_STRING = 'txtwall-shared-key-v1';
-  const enc = new TextEncoder();
-  const dec = new TextDecoder();
+  // ---------- allowance meter ----------
+  // One place that knows how to render "how many pixels do I have left",
+  // so the canvas and the accounts panel cannot disagree.
+  TW.paintMeter = function (state) {
+    if (!state) return;
+    TW.state.allowance = state;
+    const bar = document.getElementById('meterBar');
+    const text = document.getElementById('meterText');
+    if (!bar || !text) return;
 
-  let keyPromise = null;
-  function getKey() {
-    if (!keyPromise) {
-      keyPromise = crypto.subtle
-        .digest('SHA-256', enc.encode(KEY_STRING))
-        .then((digest) => crypto.subtle.importKey('raw', digest, 'AES-GCM', false, ['encrypt', 'decrypt']));
-    }
-    return keyPromise;
-  }
+    const pct = state.allowed ? Math.min(100, (state.used / state.allowed) * 100) : 0;
+    bar.style.width = pct + '%';
+    bar.className = 'meter-bar' + (state.left === 0 ? ' spent' : '');
 
-  const b64 = (u8) => btoa(String.fromCharCode.apply(null, u8));
-  const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+    let msg = state.left + ' / ' + state.allowed + ' pixels left today';
+    if (state.credits > 0) msg += ' · ' + state.credits + ' credit' + (state.credits === 1 ? '' : 's') + ' in reserve';
+    if (state.cooldown > 0) msg += ' · ready in ' + state.cooldown + 's';
+    text.textContent = msg;
+  };
 
-  TW.crypto = {
-    async encrypt(text) {
-      const key = await getKey();
-      const iv = crypto.getRandomValues(new Uint8Array(12));
-      const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(text));
-      return { ct: b64(new Uint8Array(ct)), iv: b64(iv) };
-    },
-    async decrypt(ctB64, ivB64) {
-      const key = await getKey();
-      const pt = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv: unb64(ivB64) }, key, unb64(ctB64)
-      );
-      return dec.decode(pt);
-    }
+  TW.mountMeter = function () {
+    const wrap = document.getElementById('meter');
+    if (wrap) wrap.style.display = 'flex';
   };
 })(window.TW);

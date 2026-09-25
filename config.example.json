@@ -1,22 +1,33 @@
 {
   "_comment": "Copy to config.json and edit. Only the keys you include are overridden. config.json is git-ignored, so this is yours alone. Never put secrets here - use TXTWALL_* environment variables instead.",
 
+  "site_name": "txtwall",
+  "tagline": "one pixel at a time.",
   "support_email": "owner@txtwall.xyz",
-  "support_label": "email support",
+
+  "grid_size": 256,
+  "anon_pixel_daily": 10,
+  "user_pixel_daily": 100,
+  "pixel_cooldown": 30,
+
+  "signup_per_week": 1,
+
+  "turnstile_required": false,
+  "turnstile_site_key": "",
+  "turnstile_secret": "",
+
+  "payments_enabled": false,
+  "stripe_secret_key": "",
+  "stripe_webhook_secret": "",
+
+  "admin_token": "",
 
   "features": {
-    "wall": true,
-    "reactions": true,
-    "random_message": true,
+    "canvas": true,
     "accounts": true,
-    "search": true,
+    "credits": true,
     "support_panel": true,
-    "report": false
-  },
-
-  "ttl_seconds": 86400,
-  "anon_msg_daily": 5,
-  "anon_img_daily": 1,
-  "user_msg_daily": 250,
-  "user_img_daily": 50
+    "report": true,
+    "payments": false
+  }
 }

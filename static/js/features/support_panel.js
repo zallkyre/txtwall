@@ -35,8 +35,8 @@
       const stats = document.getElementById('supportStats');
       if (!stats) return;
       TW.api('/api/stats').then((s) => {
-        stats.textContent = s.messages + ' messages · ' + s.messages_today + ' today · ' +
-          s.accounts + ' accounts · everything vanishes after ' + s.ttl_hours + 'h';
+        stats.textContent = s.painted + ' of ' + s.cells + ' cells painted · ' +
+          s.painted_today + ' today · ' + s.accounts + ' accounts · nothing expires';
       }).catch(() => { stats.textContent = ''; });
     }
   });

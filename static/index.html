@@ -2,85 +2,84 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="txtwall — an anonymous, encrypted message wall. Messages vanish after 24 hours.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="description" content="txtwall — one shared pixel canvas. 10 pixels a day, 100 with an account. Nothing expires.">
 <title>txtwall</title>
-<link rel="stylesheet" href="/css/app.css">
+<link rel="stylesheet" href="/css/app.css?v=2">
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
+
 <header>
   <div class="brand">
     <h1>txtwall</h1>
-    <p>encrypted. anonymous. optional accounts.</p>
+    <p id="tagline">one pixel at a time.</p>
   </div>
-  <button class="acct-tab" id="acctTab">account</button>
+  <div class="head-right">
+    <span class="hud" id="hud">loading...</span>
+    <button class="acct-tab" id="acctTab">account</button>
+  </div>
 </header>
 
-<main>
-
-  <!-- account panel (dropdown) -->
-  <div class="panel" id="panel">
-    <div class="row" id="authRow">
-      <input id="user" placeholder="username" maxlength="32" autocomplete="username">
-      <input id="pass" placeholder="password" type="password" maxlength="64" autocomplete="current-password">
-      <button class="btn-sm" id="loginBtn">log in</button>
-      <button class="btn-sm btn-ghost" id="signupBtn">sign up</button>
-    </div>
-    <div class="info" id="authInfo" style="display:none"></div>
-    <div class="err" id="authErr" style="display:none"></div>
+<!-- account panel, opened by the account button -->
+<div class="panel" id="panel">
+  <div class="row" id="authRow">
+    <input id="user" placeholder="username" maxlength="32" autocomplete="username" spellcheck="false">
+    <input id="pass" placeholder="password" type="password" maxlength="64" autocomplete="current-password">
+    <button class="btn-sm" id="loginBtn">log in</button>
+    <button class="btn-sm btn-ghost" id="signupBtn">sign up</button>
   </div>
+  <div id="turnstileBox" style="display:none"></div>
+  <div class="err" id="errBox" style="display:none"></div>
+  <div class="info" id="authInfo" style="display:none"></div>
+  <div class="limits" id="limitsHint"></div>
+</div>
 
-  <div class="topbar">
-    <span class="viewers"><span class="dot"></span><span id="viewerCount">0</span> people here now</span>
-    <button class="surprise" id="surpriseBtn">surprise me</button>
+<!-- toolbar: palette, erase, zoom -->
+<div class="toolbar">
+  <div class="palette" id="palette"></div>
+  <button class="btn-sm btn-ghost" id="eraseBtn" title="erase mode (E) — costs a pixel">erase</button>
+  <button class="btn-sm btn-ghost" onclick="location.hash='';location.reload()" title="back to the whole canvas">fit</button>
+  <button class="btn-sm btn-ghost" id="reportHint" title="report a pixel">report</button>
+</div>
+
+<!-- daily allowance meter -->
+<div class="meter" id="meter" style="display:none">
+  <div class="meter-track"><div class="meter-bar" id="meterBar"></div></div>
+  <span id="meterText">…</span>
+</div>
+
+<!-- the board -->
+<canvas id="board"></canvas>
+
+<!-- credits -->
+<div class="credits" id="creditsBox">
+  <span class="c-label">credits</span>
+  <span class="c-balance" id="balance">—</span>
+  <span class="c-note" id="ledger">…</span>
+  <span class="c-note" id="earnNote"></span>
+  <div id="buyRow" style="display:none">
+    <div class="packs" id="packRow"></div>
   </div>
-
-  <!-- search (shown by js/features/search.js when enabled) -->
-  <div class="searchbar" id="searchbar" style="display:none">
-    <input id="searchInput" type="search" placeholder="search loaded messages, or #12 to jump to one" autocomplete="off">
-    <span class="count" id="searchCount"></span>
-    <button id="searchClear" title="clear search">clear</button>
-  </div>
-
-  <!-- upgrade banner: shown when the anon quota is hit -->
-  <div class="upgrade" id="upgrade">
-    <span><b>daily limit reached.</b> <span id="upgradeText">log in for a higher daily limit.</span></span>
-    <button id="upgradeBtn">log in</button>
-  </div>
-
-  <div class="composer" id="composer">
-    <div class="col">
-      <textarea id="input" placeholder="say something... (ctrl+v or drag an image)" maxlength="500"></textarea>
-      <div class="under">
-        <span>encrypted in your browser before it is sent</span>
-        <span class="count" id="charCount">0/500</span>
-      </div>
-    </div>
-    <button class="img-pick" id="imgBtn" title="attach image (scaled to 1080x1080)">img</button>
-    <img class="img-preview" id="imgPreview" alt="preview">
-    <button id="postbtn" disabled>post</button>
-  </div>
-
-  <div class="wall" id="wall"></div>
-</main>
+</div>
 
 <footer>
   <div id="supportLine"></div>
-  <div id="footerNote">messages are encrypted in your browser. the server only stores ciphertext. images are re-encoded and scaled to 1080x1080. messages auto-delete after 24h.</div>
+  <div id="footerNote">one shared canvas. nobody's pixels expire.</div>
   <div class="stats" id="supportStats"></div>
+  <div class="keys">click place · right-click erase · E erase mode · wheel zoom · drag pan · F fit · G grid</div>
 </footer>
 
-<!-- report dialog (mounted by js/features/report.js) -->
+<!-- report dialog -->
 <div class="dialog-back" id="reportBack">
   <div class="dialog">
-    <h3>report message <span id="reportId"></span></h3>
-    <p>Tell the owner what's wrong with it. The message stays up either way — the owner decides what to remove.</p>
+    <h3>report pixel <span id="reportId"></span></h3>
+    <p>The pixel stays until the owner decides. Reports they agree with earn you pixels.</p>
     <textarea id="reportReason" maxlength="500" placeholder="spam, abuse, something illegal..."></textarea>
     <div class="actions">
       <button class="btn-ghost" id="reportCancel">cancel</button>
       <button id="reportSubmit">send report</button>
     </div>
-    <div class="note">Your IP is included so the owner can spot repeat abuse.</div>
   </div>
 </div>
 
@@ -96,18 +95,17 @@
   <iframe src="https://discord.com/widget?id=1548444097033928786&theme=dark" width="350" height="500" allowtransparency="true" frameborder="0" sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"></iframe>
 </div>
 
-<!-- core first, then the registry, then every feature, then boot -->
-<script src="/js/core.js"></script>
-<script src="/js/registry.js"></script>
-<script src="/js/features/wall.js"></script>
-<script src="/js/features/reactions.js"></script>
-<script src="/js/features/accounts.js"></script>
-<script src="/js/features/random_message.js"></script>
-<script src="/js/features/search.js"></script>
-<script src="/js/features/permalink.js"></script>
-<script src="/js/features/support_panel.js"></script>
-<script src="/js/features/report.js"></script>
-<script src="/js/features/discord.js"></script>
-<script src="/js/app.js"></script>
+<!-- core first, then the registry, then every feature, then boot.
+     ?v=2 busts stale browser/Cloudflare copies of the old message-wall
+     files after this rewrite; bump it whenever the frontend changes. -->
+<script src="/js/core.js?v=2"></script>
+<script src="/js/registry.js?v=2"></script>
+<script src="/js/features/canvas.js?v=2"></script>
+<script src="/js/features/accounts.js?v=2"></script>
+<script src="/js/features/credits.js?v=2"></script>
+<script src="/js/features/support_panel.js?v=2"></script>
+<script src="/js/features/report.js?v=2"></script>
+<script src="/js/features/discord.js?v=2"></script>
+<script src="/js/app.js?v=2"></script>
 </body>
 </html>

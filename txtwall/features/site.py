@@ -1,7 +1,7 @@
-"""Site-wide endpoints: public config and wall stats.
+"""Site-wide endpoints: public config and canvas stats.
 
 ``/api/config`` is what lets the front end render itself from settings —
-support address, site name, which features exist — instead of hardcoding
+site name, grid size, palette, which features exist — instead of hardcoding
 them in the HTML. A developer changes config.json, not markup.
 """
 
@@ -10,7 +10,7 @@ import time
 from fastapi import APIRouter
 
 from .. import db
-from ..config import public_config
+from ..config import GRID_SIZE, public_config
 from . import feature
 
 router = APIRouter()
@@ -25,18 +25,26 @@ def site_config():
 def stats():
     """Small numbers for the support panel."""
     conn = db.db()
-    now = int(time.time())
-    total = conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
+    painted = db.painted_count(conn)
     today = conn.execute(
-        "SELECT COUNT(*) FROM messages WHERE created_at >= ?", (db.day_start(),)
+        "SELECT COUNT(*) FROM pixel_events WHERE color IS NOT NULL AND created_at >= ?",
+        (db.day_start(),),
     ).fetchone()[0]
     accounts = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    credits = conn.execute(
+        "SELECT COALESCE(SUM(remaining), 0) FROM credits"
+    ).fetchone()[0]
+    open_reports = conn.execute(
+        "SELECT COUNT(*) FROM reports WHERE resolved = 0"
+    ).fetchone()[0]
     conn.close()
     return {
-        "messages": total,
-        "messages_today": today,
+        "painted": painted,
+        "cells": GRID_SIZE * GRID_SIZE,
+        "painted_today": today,
         "accounts": accounts,
-        "ttl_hours": round(db.CONFIG["ttl_seconds"] / 3600, 1),
+        "credits_outstanding": credits,
+        "open_reports": open_reports,
     }
 
 

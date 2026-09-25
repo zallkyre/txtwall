@@ -3,6 +3,18 @@
 The limiter is in-memory on purpose: this app runs as a single uvicorn
 process on one Pi. If it ever runs behind more than one worker, move
 `_hits` into redis or the database — the call sites do not change.
+
+The important subtlety is `client_ip`. This app is bound to 127.0.0.1 and
+reached through a Cloudflare Tunnel, so *every* request arrives from
+loopback — ``request.client.host`` is the same value for all visitors.
+Trusting it would give the entire internet one shared daily allowance and
+one shared rate-limit bucket.
+
+Cloudflare sets ``CF-Connecting-IP`` to the real visitor, and the tunnel
+is the only thing that can reach the port, so that header is trustworthy
+here. ``client_ip`` prefers it and says which source it used, so callers
+can skip the "is this a private address" test for a header we already
+trust.
 """
 
 import time
@@ -14,13 +26,28 @@ from fastapi.responses import JSONResponse
 from .config import CONFIG
 
 _hits = defaultdict(list)
-_viewers = defaultdict(float)
 
-VIEWER_WINDOW = 120  # seconds an IP counts as "here now"
+# headers Cloudflare and ordinary reverse proxies set, in trust order
+FORWARD_HEADERS = ("cf-connecting-ip", "x-real-ip", "x-forwarded-for")
 
 
 def client_ip(request: Request) -> str:
-    return request.client.host if request.client else "unknown"
+    return client_ip_detail(request)[0]
+
+
+def client_ip_detail(request: Request) -> tuple:
+    """(ip, trusted). ``trusted`` means it came from a proxy header."""
+    for header in FORWARD_HEADERS:
+        raw = request.headers.get(header)
+        if not raw:
+            continue
+        # x-forwarded-for can be a comma separated chain; the client is first
+        candidate = raw.split(",")[0].strip()
+        if candidate:
+            return candidate, True
+
+    return (request.client.host if request.client else "unknown"), False
+
 
 
 def rate_limited(ip: str) -> bool:
@@ -38,20 +65,6 @@ def rate_limited(ip: str) -> bool:
 
 def too_many() -> JSONResponse:
     return JSONResponse({"ok": False, "error": "slow down"}, status_code=429)
-
-
-# --- anonymous presence -----------------------------------------------------
-def mark_viewer(ip: str) -> None:
-    _viewers[ip] = time.time()
-    if len(_viewers) > 5000:
-        stale = [k for k, t in _viewers.items() if time.time() - t > VIEWER_WINDOW]
-        for k in stale:
-            del _viewers[k]
-
-
-def viewer_count() -> int:
-    now = time.time()
-    return sum(1 for t in _viewers.values() if now - t < VIEWER_WINDOW)
 
 
 async def security_headers(request: Request, call_next):

@@ -1,14 +1,31 @@
-"""Signup, login, session state and the account panel data."""
+"""Signup, login, session state and the allowance panel.
 
+Signup is deliberately awkward, because a free account is worth 10x an
+anonymous one and that is exactly the gap a bot would farm. Three things
+stand in the way:
+
+* **One account per IP per week**, so signing up again means waiting.
+* **Turnstile**, a free Cloudflare challenge that humans pass and scripts
+  mostly do not. This is the layer that actually does the work, and it is
+  off until you paste in your keys.
+* **A network check** for addresses that are never residential.
+
+None of this is proof. It raises the cost of mass signup from trivial to
+"some effort", which is the right bar for a site with one canvas on it.
+"""
+
+import json
 import re
 import secrets
 import time
+import urllib.parse
+import urllib.request
 
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from .. import accounts, db, security
+from .. import accounts, db, geo, identity, security
 from ..config import CONFIG
 from . import feature
 
@@ -24,6 +41,7 @@ class Signup(BaseModel):
     password: str = Field(
         min_length=CONFIG["password_min"], max_length=CONFIG["password_max"]
     )
+    turnstile_token: str = Field(default="", max_length=2048)
 
 
 class Login(BaseModel):
@@ -35,8 +53,29 @@ class Permanent(BaseModel):
     permanent: bool
 
 
+def _verify_turnstile(token: str, ip: str) -> bool:
+    """Check the challenge response. Returns True when it passes."""
+    secret = CONFIG["turnstile_secret"]
+    if not secret or not token:
+        return False
+    payload = urllib.parse.urlencode(
+        {"secret": secret, "response": token, "remoteip": ip}
+    ).encode()
+    req = urllib.request.Request(
+        "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+        data=payload,
+        headers={"Content-Type": "application/x-www-form-urlencoded", "User-Agent": "txtwall/1.0"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return bool(json.loads(resp.read().decode()).get("success"))
+    except Exception:
+        return False
+
+
 @router.post("/api/signup")
-def signup(body: Signup, response: Response):
+def signup(body: Signup, request: Request, response: Response):
     username = body.username.strip()
     if not USERNAME_RE.fullmatch(username):
         return JSONResponse(
@@ -44,7 +83,42 @@ def signup(body: Signup, response: Response):
             status_code=400,
         )
 
+    ip = security.client_ip(request)
+    ip_trusted = security.client_ip_detail(request)[1]
+    if security.rate_limited(ip):
+        return security.too_many()
+
+    # --- gate 1: Turnstile ------------------------------------------
+    if CONFIG["turnstile_required"] and not _verify_turnstile(body.turnstile_token, ip):
+        return JSONResponse(
+            {"ok": False, "error": "human check failed, reload and try again"},
+            status_code=403,
+        )
+
+    # --- gate 2: is this a real person's network? --------------------
+    allowed, reason = geo.check(ip, trusted=ip_trusted)
+    if not allowed:
+        return JSONResponse({"ok": False, "error": reason}, status_code=403)
+
+    # --- gate 3: one account per IP per week -------------------------
     conn = db.db()
+    ip_hash = identity.hash_ip(ip)
+    week = db.week_start()
+    row = conn.execute(
+        "SELECT count FROM signup_limits WHERE ip_hash = ? AND week = ?", (ip_hash, week)
+    ).fetchone()
+    used = int(row[0]) if row else 0
+    if used >= CONFIG["signup_per_week"]:
+        retry_days = max(1, round((week + 7 * 86400 - int(time.time())) / 86400))
+        conn.close()
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": f"one account per week — try again in {retry_days} day(s)",
+            },
+            status_code=429,
+        )
+
     if conn.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone():
         conn.close()
         return JSONResponse({"ok": False, "error": "username taken"}, status_code=409)
@@ -56,11 +130,22 @@ def signup(body: Signup, response: Response):
         "VALUES (?, ?, ?, ?, 0, ?)",
         (username, accounts.hash_password(body.password, salt), salt, number, int(time.time())),
     )
+    conn.execute(
+        "INSERT INTO signup_limits (ip_hash, week, count) VALUES (?, ?, 1) "
+        "ON CONFLICT(ip_hash, week) DO UPDATE SET count = count + 1",
+        (ip_hash, week),
+    )
     token = accounts.new_session(conn, cur.lastrowid)
+    conn.commit()
     conn.close()
 
     accounts.set_session_cookie(response, token)
-    return {"ok": True, "username": username, "account_number": number, "permanent": False}
+    return {
+        "ok": True,
+        "username": username,
+        "account_number": number,
+        "daily_pixels": CONFIG["user_pixel_daily"],
+    }
 
 
 @router.post("/api/login")
@@ -90,9 +175,10 @@ def login(body: Login, response: Response):
         conn.execute(
             "UPDATE users SET account_number = ? WHERE id = ?", (number, user_id)
         )
-        conn.commit()
 
+    conn.execute("UPDATE users SET last_active = ? WHERE id = ?", (int(time.time()), user_id))
     token = accounts.new_session(conn, user_id)
+    conn.commit()
     conn.close()
 
     accounts.set_session_cookie(response, token)
@@ -113,31 +199,32 @@ def logout(response: Response):
 @router.get("/api/me")
 def me(request: Request):
     user = accounts.current_user(request)
-    ip = security.client_ip(request)
+    ident, user_id = identity.identity(request, user)
     conn = db.db()
 
-    if user:
-        msg_used = db.quota_used(conn, user["id"], None, "ct")
-        img_used = db.quota_used(conn, user["id"], None, "image")
-        msg_max, img_max = db.quota_limits(user["id"])
-        conn.close()
-        return {
-            "ok": True,
-            "logged_in": True,
-            "username": user["username"],
-            "account_number": user["account_number"],
-            "permanent": bool(user["permanent"]),
-            "quota": {"messages": [msg_used, msg_max], "images": [img_used, img_max]},
-        }
+    allow = db.allowance(conn, user_id)
+    used = db.used_today(conn, ident)
+    state = {
+        "used": used,
+        "base": allow["base"],
+        "credits": allow["credits"],
+        "allowed": allow["allowed"],
+        "left": max(0, allow["allowed"] - used),
+        "cooldown": db.cooldown_left(conn, ident),
+    }
 
-    msg_used = db.quota_used(conn, None, ip, "ct")
-    img_used = db.quota_used(conn, None, ip, "image")
-    msg_max, img_max = db.quota_limits(None)
+    if not user:
+        conn.close()
+        return {"ok": True, "logged_in": False, "state": state}
+
     conn.close()
     return {
         "ok": True,
-        "logged_in": False,
-        "quota": {"messages": [msg_used, msg_max], "images": [img_used, img_max]},
+        "logged_in": True,
+        "username": user["username"],
+        "account_number": user["account_number"],
+        "permanent": bool(user["permanent"]),
+        "state": state,
     }
 
 
@@ -160,5 +247,5 @@ feature(
     "accounts",
     router,
     title="Optional accounts",
-    description="accounts raise daily limits. account numbers rotate on login.",
+    description="one account per week per IP. accounts raise the daily allowance to 100.",
 )
