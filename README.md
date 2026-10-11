@@ -8,7 +8,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688.svg)](https://fastapi.tiangolo.com/)
 [![SQLite](https://img.shields.io/badge/SQLite-3-003B57.svg)](https://www.sqlite.org/)
-[![Cloudflare Tunnel](https://img.shields.io/badge/Cloudflare%20Tunnel-live-F38020.svg)](https://txtwall.xyz)
+[![status](https://img.shields.io/badge/status-retired-6b7280.svg)](https://txtwall.xyz)
 
 **Live at [txtwall.xyz](https://txtwall.xyz)** — running 24/7 on a Raspberry Pi 3
 
