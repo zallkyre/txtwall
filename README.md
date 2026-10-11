@@ -10,7 +10,7 @@
 [![SQLite](https://img.shields.io/badge/SQLite-3-003B57.svg)](https://www.sqlite.org/)
 [![status](https://img.shields.io/badge/status-retired-6b7280.svg)](https://txtwall.xyz)
 
-**Live at [txtwall.xyz](https://txtwall.xyz)** — running 24/7 on a Raspberry Pi 3
+**Retired** - this app is no longer deployed; `txtwall.xyz` now serves the portfolio.
 
 </div>
 
