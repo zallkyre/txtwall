@@ -231,3 +231,7 @@ MIT — do whatever you want with it.
 **Made with a Raspberry Pi**
 
 </div>
+
+---
+
+**LLM guide** — encrypted anonymous text wall. client-side AES-GCM, server stores only ciphertext. fastapi + sqlite. · Stack: Python · Entry: `app.py` · Run: `pip install -r requirements.txt` · License: MIT
